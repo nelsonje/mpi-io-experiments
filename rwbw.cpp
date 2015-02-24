@@ -134,6 +134,8 @@ void mpi_read_shared(std::string filename, char * buffer, size_t size) {
     MPI_Datatype datatype;
     MPI_Info info;
 
+
+
     // Stupid MPI uses a signed integer for the count of data elements
     // to write. On all the machines we use, this means the max count
     // is 2^31-1. To work around this, we create a datatype large
@@ -174,6 +176,19 @@ void mpi_read_shared(std::string filename, char * buffer, size_t size) {
     int mode = MPI_MODE_RDONLY;
     MPI_CHECK( MPI_File_open( MPI_COMM_WORLD, filename.c_str(), mode, info, &infile ) );
 
+    // make sure we will read exactly the whole file
+    int64_t total_size = size;
+    MPI_CHECK( MPI_Reduce( &size, &total_size, 1, MPI_INT64_T, MPI_SUM, 0, MPI_COMM_WORLD ) );
+    if( 0 == mpi_mycore ) {
+      MPI_Offset file_size = 0;
+      std::cout << "MPI_Offset size is " << sizeof(MPI_Offset) << std::endl;
+      MPI_CHECK( MPI_File_get_size( infile, &file_size ) );
+      if( file_size != total_size ) {
+        std::cerr << "Sizes don't line up to read the enitre file?";
+      }
+    }
+
+    // dump file info
     if( mpi_mycore == 0 ) {
       MPI_CHECK( MPI_File_get_info( infile, &info ) );
       int nkeys;
@@ -190,6 +205,7 @@ void mpi_read_shared(std::string filename, char * buffer, size_t size) {
       }
       fflush(stdout);
     }
+
 
 
     //MPI_CHECK( MPI_File_write_shared( infile, buffer, size, MPI_BYTE, &status ) );
@@ -356,7 +372,7 @@ int main( int argc, char * argv[] ) {
     double runtime = MPI_Wtime() - start;
     double bandwidth = total_size / runtime / 1000000;
     if( mpi_mycore == 0 ) {
-      std::cout << "MPI collective write " << total_size << " bytes in " 
+      std::cout << "MPI collective IO of " << total_size << " bytes in " 
                 << runtime << " seconds: " 
                 << bandwidth << " MB/s." << std::endl;
     }
